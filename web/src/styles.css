@@ -77,7 +77,8 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
 .icon-button { width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 50%; color: var(--cyan); background: rgba(10, 30, 39, 0.66); cursor: pointer; transition: border-color 160ms ease, background 160ms ease, transform 160ms ease; }
 .icon-button:hover { border-color: rgba(101, 236, 255, 0.54); background: rgba(17, 48, 58, 0.8); transform: translateY(-1px); }
 
-.game-stage { position: relative; z-index: 2; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 12px 20px 8px; }
+.game-stage { position: relative; z-index: 2; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 12px 20px 8px; touch-action: none; user-select: none; cursor: grab; }
+.game-stage.is-dragging { cursor: grabbing; }
 .stage-copy { position: relative; z-index: 3; flex: 0 0 auto; }
 .eyebrow { color: var(--cyan); letter-spacing: 0.25em; font-size: 9px; font-weight: 800; margin-bottom: 8px; }
 h1, h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; }
@@ -88,8 +89,7 @@ h1 { margin: 0; font-size: clamp(32px, 4.5vw, 50px); letter-spacing: -0.038em; l
 .scene-frame { width: 76%; aspect-ratio: 1; position: relative; z-index: 2; border-radius: 50%; overflow: hidden; border: 1px solid rgba(166, 240, 255, 0.41); background: radial-gradient(circle at 34% 27%, rgba(200, 248, 255, 0.14), transparent 16%), radial-gradient(circle, rgba(30, 112, 133, 0.1), rgba(2, 12, 18, 0.46) 72%); box-shadow: inset -25px -26px 58px rgba(0, 6, 10, 0.82), inset 15px 15px 45px rgba(100, 224, 242, 0.08), 0 0 80px rgba(45, 184, 211, 0.13), 0 0 2px var(--cyan); }
 .scene-frame::before { content: ""; position: absolute; inset: 5%; border-radius: 50%; border: 1px solid rgba(154, 238, 253, 0.07); pointer-events: none; z-index: 4; }
 .scene-frame::after { content: ""; position: absolute; inset: 38%; z-index: 8; border: 1px solid rgba(211, 252, 255, .92); border-radius: 50%; opacity: 0; pointer-events: none; box-shadow: 0 0 18px rgba(101, 236, 255, .8), inset 0 0 14px rgba(101, 236, 255, .42); }
-.scene-mount { position: absolute; inset: 0; touch-action: none; cursor: grab; }
-.scene-mount:active { cursor: grabbing; }
+.scene-mount { position: absolute; inset: 0; pointer-events: none; }
 .scene-mount canvas { display: block; width: 100% !important; height: 100% !important; }
 .glass-highlight { position: absolute; inset: 0; z-index: 5; pointer-events: none; border-radius: 50%; background: radial-gradient(ellipse at 31% 25%, rgba(223, 252, 255, 0.25), transparent 8%), linear-gradient(126deg, rgba(255,255,255,0.08), transparent 24%); mix-blend-mode: screen; }
 

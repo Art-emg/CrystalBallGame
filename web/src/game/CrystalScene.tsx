@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, type RefObject } from "react";
 import * as THREE from "three";
 import type { Level } from "./levels";
 
@@ -8,6 +8,7 @@ export type CrystalSceneHandle = {
 };
 
 type Props = {
+  interactionTargetRef?: RefObject<HTMLElement | null>;
   level: Level;
   levelIndex: number;
   paused: boolean;
@@ -159,7 +160,7 @@ function createParticleMaterial() {
 }
 
 const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene(
-  { level, levelIndex, paused, onScore, onSolved, onInteract },
+  { interactionTargetRef, level, levelIndex, paused, onScore, onSolved, onInteract },
   forwardedRef,
 ) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -190,6 +191,7 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
     renderer.domElement.setAttribute("aria-label", `Хрустальная сфера. Силуэт: ${level.name}`);
     renderer.domElement.setAttribute("role", "img");
     mount.appendChild(renderer.domElement);
+    const interactionTarget = interactionTargetRef?.current ?? renderer.domElement;
 
     const constellation = new THREE.Group();
     scene.add(constellation);
@@ -315,11 +317,14 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
 
     const onPointerDown = (event: PointerEvent) => {
       if (pausedRef.current || solved) return;
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      event.preventDefault();
       dragging = true;
       pointerId = event.pointerId;
       lastX = event.clientX;
       lastY = event.clientY;
-      renderer.domElement.setPointerCapture(event.pointerId);
+      interactionTarget.setPointerCapture(event.pointerId);
+      interactionTarget.classList.add("is-dragging");
       callbacksRef.current.onInteract?.();
     };
     const onPointerMove = (event: PointerEvent) => {
@@ -329,11 +334,16 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
       lastX = event.clientX;
       lastY = event.clientY;
       rotateBy(dx, dy);
+      event.preventDefault();
     };
     const stopDragging = (event: PointerEvent) => {
       if (event.pointerId !== pointerId) return;
       dragging = false;
       pointerId = -1;
+      interactionTarget.classList.remove("is-dragging");
+      if (interactionTarget.hasPointerCapture(event.pointerId)) {
+        interactionTarget.releasePointerCapture(event.pointerId);
+      }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (pausedRef.current || solved) return;
@@ -347,10 +357,10 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
       callbacksRef.current.onInteract?.();
     };
 
-    renderer.domElement.addEventListener("pointerdown", onPointerDown);
-    renderer.domElement.addEventListener("pointermove", onPointerMove);
-    renderer.domElement.addEventListener("pointerup", stopDragging);
-    renderer.domElement.addEventListener("pointercancel", stopDragging);
+    interactionTarget.addEventListener("pointerdown", onPointerDown);
+    interactionTarget.addEventListener("pointermove", onPointerMove);
+    interactionTarget.addEventListener("pointerup", stopDragging);
+    interactionTarget.addEventListener("pointercancel", stopDragging);
     window.addEventListener("keydown", onKeyDown);
 
     apiRef.current = {
@@ -436,10 +446,11 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
     return () => {
       cancelAnimationFrame(animationFrame);
       resizeObserver.disconnect();
-      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
-      renderer.domElement.removeEventListener("pointermove", onPointerMove);
-      renderer.domElement.removeEventListener("pointerup", stopDragging);
-      renderer.domElement.removeEventListener("pointercancel", stopDragging);
+      interactionTarget.removeEventListener("pointerdown", onPointerDown);
+      interactionTarget.removeEventListener("pointermove", onPointerMove);
+      interactionTarget.removeEventListener("pointerup", stopDragging);
+      interactionTarget.removeEventListener("pointercancel", stopDragging);
+      interactionTarget.classList.remove("is-dragging");
       window.removeEventListener("keydown", onKeyDown);
       apiRef.current = null;
       particleGeometry.dispose();
@@ -459,7 +470,7 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [level, levelIndex]);
+  }, [interactionTargetRef, level, levelIndex]);
 
   return <div className="scene-mount" ref={mountRef} />;
 });

@@ -50,6 +50,7 @@ function playTone(enabled: boolean, kind: "tap" | "hint" | "success") {
 
 export default function App() {
   const sceneRef = useRef<CrystalSceneHandle>(null);
+  const stageRef = useRef<HTMLElement>(null);
   const nextTimerRef = useRef<number | null>(null);
   const revealTimerRef = useRef<number | null>(null);
   const [levelIndex, setLevelIndex] = useState(() => Math.min(TOTAL_LEVELS - 1, Math.max(0, readNumber(STORAGE_LEVEL, 0))));
@@ -159,11 +160,11 @@ export default function App() {
         </div>
       </header>
 
-      <section className="game-stage" aria-label="Игровое поле">
+      <section ref={stageRef} className="game-stage" aria-label="Игровое поле">
         <div className="stage-copy">
           <div className="eyebrow">СОБЕРИТЕ СОЗВЕЗДИЕ</div>
           <h1>{solved ? level.name : "Найдите силуэт"}</h1>
-          <p className="hint-copy">{solved ? "Созвездие найдено" : "Проведите по сфере, чтобы повернуть её"}</p>
+          <p className="hint-copy">{solved ? "Созвездие найдено" : "Проведите по экрану, чтобы повернуть сферу"}</p>
         </div>
 
         <div className="crystal-wrap">
@@ -173,6 +174,7 @@ export default function App() {
           <div className="scene-frame">
             <CrystalScene
               ref={sceneRef}
+              interactionTargetRef={stageRef}
               level={level}
               levelIndex={levelIndex}
               paused={paused || introOpen}
