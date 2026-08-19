@@ -61,3 +61,5 @@ export const LEVELS: Level[] = [
 }));
 
 export const TOTAL_LEVELS = LEVELS.length;
+export const DISPLAY_LEVELS = 300;
+export const CHAPTER_SIZE = 10;

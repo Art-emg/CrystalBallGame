@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, type RefObject } from "react";
 import * as THREE from "three";
 import type { Level } from "./levels";
+import type { DifficultyId, ThemeId } from "./progress";
 
 export type CrystalSceneHandle = {
   hint: () => void;
@@ -10,7 +11,10 @@ export type CrystalSceneHandle = {
 type Props = {
   interactionTargetRef?: RefObject<HTMLElement | null>;
   level: Level;
+  levelName: string;
   levelIndex: number;
+  difficulty: DifficultyId;
+  theme: ThemeId;
   paused: boolean;
   onScore: (score: number) => void;
   onSolved: () => void;
@@ -18,6 +22,19 @@ type Props = {
 };
 
 type SceneApi = CrystalSceneHandle;
+
+const DIFFICULTY_SETTINGS = {
+  easy: { depth: 0.58, solveAngle: 0.25, settleMs: 260, targetOpacity: 0.12, hintStrength: 0.74 },
+  normal: { depth: 0.82, solveAngle: 0.18, settleMs: 380, targetOpacity: 0.075, hintStrength: 0.62 },
+  hard: { depth: 0.94, solveAngle: 0.115, settleMs: 540, targetOpacity: 0.042, hintStrength: 0.5 },
+} as const;
+
+const THEME_PALETTES = {
+  orbit: { particleA: 0x3bc4eb, particleB: 0xebffff, sphere: 0x5dc9df, rim: 0x8feeff, light: 0xb8f7ff, target: "rgba(105, 226, 245, .52)", victoryA: "#f3ffff", victoryB: "#22bfdc" },
+  cartoon: { particleA: 0xff71c6, particleB: 0xfff7a8, sphere: 0x8b7bff, rim: 0xff9edd, light: 0xffe6a8, target: "rgba(255, 111, 199, .58)", victoryA: "#fffbd1", victoryB: "#ff61bc" },
+  cozy: { particleA: 0xd99b55, particleB: 0xfff0c9, sphere: 0x77a79a, rim: 0xe8bb7a, light: 0xffddb0, target: "rgba(222, 169, 100, .56)", victoryA: "#fff7da", victoryB: "#c98245" },
+  deco: { particleA: 0xd8aa53, particleB: 0xfff2bd, sphere: 0x82659a, rim: 0xe9c46a, light: 0xffe6a6, target: "rgba(229, 190, 100, .55)", victoryA: "#fff5ca", victoryB: "#c68b37" },
+} as const;
 
 function seededRandom(seed: number) {
   let value = seed || 1;
@@ -29,7 +46,7 @@ function seededRandom(seed: number) {
   };
 }
 
-function createGlyphCanvas(path: string, bright = false) {
+function createGlyphCanvas(path: string, color: string, bright = false) {
   const canvas = document.createElement("canvas");
   canvas.width = 320;
   canvas.height = 320;
@@ -38,15 +55,15 @@ function createGlyphCanvas(path: string, bright = false) {
   context.save();
   context.translate(32, 32);
   context.scale(10.66, 10.66);
-  context.fillStyle = bright ? "rgba(155, 248, 255, .92)" : "rgba(105, 226, 245, .52)";
-  context.shadowColor = "rgba(80, 226, 255, .9)";
+  context.fillStyle = bright ? color.replace(/\.[0-9]+\)$/, ".92)") : color;
+  context.shadowColor = color.replace(/\.[0-9]+\)$/, ".9)");
   context.shadowBlur = bright ? 1.6 : 1;
   context.fill(new Path2D(path));
   context.restore();
   return canvas;
 }
 
-function createVictoryCanvas(path: string) {
+function createVictoryCanvas(path: string, colorA: string, colorB: string) {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
   canvas.height = 512;
@@ -56,10 +73,10 @@ function createVictoryCanvas(path: string) {
   context.translate(42, 42);
   context.scale(17.83, 17.83);
   const gradient = context.createLinearGradient(2, 1, 22, 24);
-  gradient.addColorStop(0, "#f3ffff");
-  gradient.addColorStop(0.38, "#8df5ff");
-  gradient.addColorStop(1, "#22bfdc");
-  context.shadowColor = "rgba(74, 225, 255, .95)";
+  gradient.addColorStop(0, colorA);
+  gradient.addColorStop(0.38, colorA);
+  gradient.addColorStop(1, colorB);
+  context.shadowColor = colorB;
   context.shadowBlur = 1.25;
   context.fillStyle = gradient;
   context.fill(shape);
@@ -71,8 +88,8 @@ function createVictoryCanvas(path: string) {
   return canvas;
 }
 
-function createParticleGeometry(path: string, levelIndex: number, difficulty: number) {
-  const canvas = createGlyphCanvas(path, true);
+function createParticleGeometry(path: string, levelIndex: number, difficulty: number, depth: number, targetColor: string) {
+  const canvas = createGlyphCanvas(path, targetColor, true);
   const context = canvas.getContext("2d", { willReadFrequently: true })!;
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
   const random = seededRandom(104729 + levelIndex * 7919);
@@ -101,7 +118,7 @@ function createParticleGeometry(path: string, levelIndex: number, difficulty: nu
     const x = ((pixelX / 320) - 0.5) * 1.42;
     const y = -((pixelY / 320) - 0.5) * 1.42;
     const chord = Math.sqrt(Math.max(0.03, 0.82 * 0.82 - x * x - y * y));
-    const z = (random() * 2 - 1) * chord * 0.86;
+    const z = (random() * 2 - 1) * chord * depth;
     positions[index * 3] = x;
     positions[index * 3 + 1] = y;
     positions[index * 3 + 2] = z;
@@ -115,7 +132,7 @@ function createParticleGeometry(path: string, levelIndex: number, difficulty: nu
   return geometry;
 }
 
-function createParticleMaterial() {
+function createParticleMaterial(colorA: number, colorB: number) {
   return new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
@@ -126,6 +143,8 @@ function createParticleMaterial() {
       uGlow: { value: 0 },
       uOpacity: { value: 1 },
       uTime: { value: 0 },
+      uColorA: { value: new THREE.Color(colorA) },
+      uColorB: { value: new THREE.Color(colorB) },
     },
     vertexShader: `
       attribute float aSize;
@@ -146,13 +165,15 @@ function createParticleMaterial() {
     fragmentShader: `
       uniform float uGlow;
       uniform float uOpacity;
+      uniform vec3 uColorA;
+      uniform vec3 uColorB;
       varying float vPulse;
       void main() {
         float distanceToCenter = distance(gl_PointCoord, vec2(0.5));
         float core = 1.0 - smoothstep(0.10, 0.46, distanceToCenter);
         float halo = 1.0 - smoothstep(0.18, 0.50, distanceToCenter);
         float alpha = core * 0.88 + halo * (0.26 + uGlow * 0.42);
-        vec3 color = mix(vec3(0.23, 0.77, 0.92), vec3(0.92, 1.0, 1.0), core + uGlow * 0.35);
+        vec3 color = mix(uColorA, uColorB, core + uGlow * 0.35);
         gl_FragColor = vec4(color * (0.85 + vPulse * 0.25), alpha * uOpacity);
       }
     `,
@@ -160,7 +181,7 @@ function createParticleMaterial() {
 }
 
 const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene(
-  { interactionTargetRef, level, levelIndex, paused, onScore, onSolved, onInteract },
+  { interactionTargetRef, level, levelName, levelIndex, difficulty, theme, paused, onScore, onSolved, onInteract },
   forwardedRef,
 ) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -179,6 +200,8 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
+    const difficultySettings = DIFFICULTY_SETTINGS[difficulty];
+    const palette = THEME_PALETTES[theme];
 
     const scene = new THREE.Scene();
     const camera = new THREE.OrthographicCamera(-1.35, 1.35, 1.35, -1.35, 0.1, 20);
@@ -188,25 +211,25 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x000000, 0);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.domElement.setAttribute("aria-label", `Хрустальная сфера. Силуэт: ${level.name}`);
+    renderer.domElement.setAttribute("aria-label", `Хрустальная сфера. Силуэт: ${levelName}`);
     renderer.domElement.setAttribute("role", "img");
     mount.appendChild(renderer.domElement);
     const interactionTarget = interactionTargetRef?.current ?? renderer.domElement;
 
     const constellation = new THREE.Group();
     scene.add(constellation);
-    const particleGeometry = createParticleGeometry(level.path, levelIndex, level.difficulty);
-    const particleMaterial = createParticleMaterial();
+    const particleGeometry = createParticleGeometry(level.path, levelIndex, level.difficulty, difficultySettings.depth, palette.target);
+    const particleMaterial = createParticleMaterial(palette.particleA, palette.particleB);
     const particles = new THREE.Points(particleGeometry, particleMaterial);
     particles.renderOrder = 2;
     constellation.add(particles);
 
-    const targetTexture = new THREE.CanvasTexture(createGlyphCanvas(level.path));
+    const targetTexture = new THREE.CanvasTexture(createGlyphCanvas(level.path, palette.target));
     targetTexture.colorSpace = THREE.SRGBColorSpace;
     const targetMaterial = new THREE.MeshBasicMaterial({
       map: targetTexture,
       transparent: true,
-      opacity: 0.075,
+      opacity: difficultySettings.targetOpacity,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
@@ -215,7 +238,7 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
     target.renderOrder = 0;
     scene.add(target);
 
-    const victoryTexture = new THREE.CanvasTexture(createVictoryCanvas(level.path));
+    const victoryTexture = new THREE.CanvasTexture(createVictoryCanvas(level.path, palette.victoryA, palette.victoryB));
     victoryTexture.colorSpace = THREE.SRGBColorSpace;
     victoryTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
     const victoryMaterial = new THREE.MeshBasicMaterial({
@@ -233,7 +256,7 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
     scene.add(victoryShape);
 
     const victoryRingMaterial = new THREE.MeshBasicMaterial({
-      color: 0xa8f7ff,
+      color: palette.rim,
       transparent: true,
       opacity: 0,
       depthWrite: false,
@@ -247,7 +270,7 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
     scene.add(victoryRing);
 
     const sphereMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0x5dc9df,
+      color: palette.sphere,
       transparent: true,
       opacity: 0.11,
       transmission: 0.42,
@@ -264,13 +287,13 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
     sphere.renderOrder = 3;
     scene.add(sphere);
 
-    const rimMaterial = new THREE.MeshBasicMaterial({ color: 0x8feeff, transparent: true, opacity: 0.045, wireframe: true, depthWrite: false });
+    const rimMaterial = new THREE.MeshBasicMaterial({ color: palette.rim, transparent: true, opacity: 0.045, wireframe: true, depthWrite: false });
     const rim = new THREE.Mesh(new THREE.SphereGeometry(0.946, 32, 18), rimMaterial);
     rim.scale.set(1, 1, 0.998);
     rim.renderOrder = 4;
     scene.add(rim);
 
-    const light = new THREE.DirectionalLight(0xb8f7ff, 2.2);
+    const light = new THREE.DirectionalLight(palette.light, 2.2);
     light.position.set(-2, 3, 4);
     scene.add(light, new THREE.AmbientLight(0x4bbad0, 1.1));
 
@@ -285,7 +308,7 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
       alignStartedAt = 0;
       particleMaterial.uniforms.uGlow.value = 0;
       particleMaterial.uniforms.uOpacity.value = 1;
-      targetMaterial.opacity = 0.075;
+      targetMaterial.opacity = difficultySettings.targetOpacity;
       victoryMaterial.opacity = 0;
       victoryShape.scale.setScalar(0.5);
       victoryRingMaterial.opacity = 0;
@@ -366,7 +389,7 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
     apiRef.current = {
       hint: () => {
         if (pausedRef.current || solved) return;
-        constellation.quaternion.slerp(identity, 0.62).normalize();
+        constellation.quaternion.slerp(identity, difficultySettings.hintStrength).normalize();
         particleMaterial.uniforms.uGlow.value = 0.8;
       },
       reset: scramble,
@@ -409,9 +432,9 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
           callbacksRef.current.onScore(score);
         }
 
-        if (!solved && angle < 0.18) {
+        if (!solved && angle < difficultySettings.solveAngle) {
           if (!alignStartedAt) alignStartedAt = performance.now();
-          if (performance.now() - alignStartedAt > 380) {
+          if (performance.now() - alignStartedAt > difficultySettings.settleMs) {
             solved = true;
             solvedAt = performance.now();
             constellation.quaternion.copy(identity);
@@ -429,7 +452,7 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
           const back = 1 + 2.7 * Math.pow(reveal - 1, 3) + 1.7 * Math.pow(reveal - 1, 2);
           particleMaterial.uniforms.uGlow.value = 0.9 * (1 - reveal);
           particleMaterial.uniforms.uOpacity.value = Math.max(0, 1 - reveal * 3.1);
-          targetMaterial.opacity = 0.075 * (1 - eased);
+          targetMaterial.opacity = difficultySettings.targetOpacity * (1 - eased);
           victoryMaterial.opacity = Math.min(1, Math.max(0, (reveal - 0.06) * 4.2));
           victoryShape.scale.setScalar(0.53 + back * 0.47);
           victoryShape.rotation.z = Math.sin(reveal * Math.PI) * -0.025;
@@ -470,7 +493,7 @@ const CrystalScene = forwardRef<CrystalSceneHandle, Props>(function CrystalScene
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [interactionTargetRef, level, levelIndex]);
+  }, [difficulty, interactionTargetRef, level, levelIndex, levelName, theme]);
 
   return <div className="scene-mount" ref={mountRef} />;
 });
